@@ -9,6 +9,7 @@ module OmniAuth
 
       option :credentials
       option :identifier
+      option :domain
       option :authorize_options, [:scope]
 
       option :client_options, {
@@ -16,7 +17,7 @@ module OmniAuth
         token_url: '/oauth/token'
       }
 
-      uid { identifier }
+      uid { identifier || "#{raw_info['username']}@#{domain}" }
 
       info do
         {
@@ -34,11 +35,11 @@ module OmniAuth
       # Before we can redirect the user to authorize access, we must know where the user is from
       # If the identifier param is not already present, a form will be shown for entering it
       def request_phase
-        identifier ? start_oauth : get_identifier
+        (identifier || domain) ? start_oauth : get_identifier
       end
 
       def callback_phase
-        set_options_from_identifier
+        domain ? set_options_from_domain : set_options_from_identifier
         super
       end
 
@@ -66,7 +67,7 @@ module OmniAuth
       end
 
       def start_oauth
-        set_options_from_identifier
+        domain ? set_options_from_domain : set_options_from_identifier
         redirect client.auth_code.authorize_url({:redirect_uri => callback_url}.merge(authorize_params))
       end
 
@@ -78,11 +79,23 @@ module OmniAuth
         i
       end
 
+      def domain
+        options.domain || request.params['domain']
+      end
+
       def set_options_from_identifier
         username, domain         = identifier.split('@')
         client_id, client_secret = options.credentials.call(domain, callback_url)
 
         options.identifier            = identifier
+        options.client_options[:site] = "https://#{domain}"
+        options.client_id             = client_id
+        options.client_secret         = client_secret
+      end
+
+      def set_options_from_domain
+        client_id, client_secret = options.credentials.call(domain, callback_url)
+
         options.client_options[:site] = "https://#{domain}"
         options.client_id             = client_id
         options.client_secret         = client_secret
